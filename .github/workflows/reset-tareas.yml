@@ -1,0 +1,29 @@
+name: Reset diario de tareas
+
+on:
+  schedule:
+    # Corre cada hora; el script internamente solo actúa cuando es
+    # medianoche en Chile (esto evita problemas con el horario de verano).
+    - cron: "0 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  reset:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configurar Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Instalar dependencia de Supabase
+        run: npm install @supabase/supabase-js
+
+      - name: Ejecutar reseteo
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node supabase/reset-tareas.mjs
