@@ -1,7 +1,7 @@
 import React from "react";
 import TaskCard from "./TaskCard.jsx";
 
-export default function WeeklyReviewModal({ tasks, team, onClose, onCardClick, onEditTask }) {
+export default function WeeklyReviewModal({ tasks, team, onClose, onCardClick, onEditTask, onUnassign }) {
   const pendientesOEnCurso = tasks.filter((t) => t.status !== "completada");
   const completadas = tasks.filter((t) => t.status === "completada");
 
@@ -24,6 +24,7 @@ export default function WeeklyReviewModal({ tasks, team, onClose, onCardClick, o
             team={team}
             onClick={() => onCardClick(task)}
             onEdit={() => onEditTask(task)}
+            onUnassign={() => onUnassign(task)}
           />
         ))}
 
@@ -37,6 +38,7 @@ export default function WeeklyReviewModal({ tasks, team, onClose, onCardClick, o
                 team={team}
                 onClick={() => onCardClick(task)}
                 onEdit={() => onEditTask(task)}
+                onUnassign={() => onUnassign(task)}
               />
             ))}
           </>
