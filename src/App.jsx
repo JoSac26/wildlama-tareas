@@ -1,27 +1,21 @@
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { supabase } from "./supabaseClient.js";
-import Board from "./components/Board.jsx";
+import Section from "./components/Section.jsx";
+import WeeklyReviewModal from "./components/WeeklyReviewModal.jsx";
 import TaskModal from "./components/TaskModal.jsx";
 import AssignModal from "./components/AssignModal.jsx";
 import SettingsModal from "./components/SettingsModal.jsx";
 
 const DIA_HOY = new Date().getDay(); // 0=domingo ... 6=sábado
 
-function tareaAplicaHoy(task) {
-  if (task.type === "diaria") return true;
-  if (task.type === "semanal") {
-    const esHoySuDia = (task.days_of_week || []).includes(DIA_HOY);
-    const sigueIncompleta = task.status !== "completada";
-    // Se muestra el día que le toca, y sigue visible todos los días
-    // siguientes si no se ha completado, hasta que alguien la marque lista.
-    return esHoySuDia || sigueIncompleta;
-  }
-  if (task.type === "fecha") {
-    const hoy = new Date().toISOString().slice(0, 10);
-    // se muestra el día indicado, y sigue visible si quedó pendiente de días anteriores
-    return !task.specific_date || task.specific_date <= hoy;
-  }
-  return true;
+function esSemanalDeHoy(task) {
+  return (task.days_of_week || []).includes(DIA_HOY);
+}
+
+function tareaReunionVisible(task) {
+  const hoy = new Date().toISOString().slice(0, 10);
+  // se muestra desde su plazo en adelante (si no tiene plazo, siempre visible)
+  return !task.specific_date || task.specific_date <= hoy;
 }
 
 export default function App() {
@@ -34,6 +28,7 @@ export default function App() {
   const [editingTask, setEditingTask] = useState(null);
   const [assigningTask, setAssigningTask] = useState(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [showWeeklyReview, setShowWeeklyReview] = useState(false);
 
   const loadAll = useCallback(async () => {
     setLoading(true);
@@ -65,16 +60,24 @@ export default function App() {
     };
   }, [loadAll]);
 
-  const visibleTasks = useMemo(() => tasks.filter(tareaAplicaHoy), [tasks]);
-
-  const grouped = useMemo(
-    () => ({
-      pendiente: visibleTasks.filter((t) => t.status === "pendiente"),
-      en_curso: visibleTasks.filter((t) => t.status === "en_curso"),
-      completada: visibleTasks.filter((t) => t.status === "completada"),
-    }),
-    [visibleTasks]
+  const diarias = useMemo(() => tasks.filter((t) => t.type === "diaria"), [tasks]);
+  const semanalesHoy = useMemo(
+    () => tasks.filter((t) => t.type === "semanal" && esSemanalDeHoy(t)),
+    [tasks]
   );
+  const todasLasSemanales = useMemo(() => tasks.filter((t) => t.type === "semanal"), [tasks]);
+  const reunion = useMemo(
+    () => tasks.filter((t) => t.type === "fecha" && tareaReunionVisible(t)),
+    [tasks]
+  );
+
+  function agrupar(lista) {
+    return {
+      pendiente: lista.filter((t) => t.status === "pendiente"),
+      en_curso: lista.filter((t) => t.status === "en_curso"),
+      completada: lista.filter((t) => t.status === "completada"),
+    };
+  }
 
   async function handleAssign(task, memberId) {
     await supabase
@@ -133,12 +136,42 @@ export default function App() {
       {error && <div className="status-error">No se pudo cargar: {error}</div>}
 
       {!loading && !error && (
-        <Board
-          grouped={grouped}
-          team={team}
-          onCardClick={handleCardClick}
-          onEditTask={setEditingTask}
-        />
+        <>
+          <Section
+            id="diarias"
+            title="☀️ Diarias"
+            subtitle="Se resetean solas cada noche"
+            grouped={agrupar(diarias)}
+            team={team}
+            onCardClick={handleCardClick}
+            onEditTask={setEditingTask}
+          />
+
+          <Section
+            id="semanales"
+            title="🗓️ Semanales"
+            subtitle="Solo se muestran el día que les toca"
+            grouped={agrupar(semanalesHoy)}
+            team={team}
+            onCardClick={handleCardClick}
+            onEditTask={setEditingTask}
+            headerAction={
+              <button className="link-btn-section" onClick={() => setShowWeeklyReview(true)}>
+                Ver todas las semanales
+              </button>
+            }
+          />
+
+          <Section
+            id="reunion"
+            title="🤝 Tareas nacidas en reunión"
+            subtitle="Con reunión de origen y plazo"
+            grouped={agrupar(reunion)}
+            team={team}
+            onCardClick={handleCardClick}
+            onEditTask={setEditingTask}
+          />
+        </>
       )}
 
       {(showNewTask || editingTask) && (
@@ -175,6 +208,16 @@ export default function App() {
 
       {showSettings && (
         <SettingsModal team={team} onClose={() => setShowSettings(false)} onChanged={loadAll} />
+      )}
+
+      {showWeeklyReview && (
+        <WeeklyReviewModal
+          tasks={todasLasSemanales}
+          team={team}
+          onClose={() => setShowWeeklyReview(false)}
+          onCardClick={handleCardClick}
+          onEditTask={setEditingTask}
+        />
       )}
     </div>
   );
