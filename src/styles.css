@@ -204,9 +204,9 @@ button {
   white-space: nowrap;
 }
 
-.badge-diaria { background: #e4e9df; color: var(--primary-dark); }
-.badge-fecha { background: #eadfd0; color: #7a5a34; }
-.badge-semanal { background: #dde6ef; color: #3a5a78; }
+.badge-diaria { background: #dcefe1; color: #2f6b45; }
+.badge-fecha { background: #f7e2cf; color: #8a5a2b; }
+.badge-semanal { background: #e6def2; color: #5b3f80; }
 
 .assignee {
   font-size: 12.5px;
@@ -394,6 +394,104 @@ button {
   color: var(--ink-soft);
   margin-top: -8px;
   margin-bottom: 14px;
+}
+
+.task-section {
+  border-radius: 20px;
+  padding: 20px 20px 6px;
+  margin-bottom: 28px;
+  border: 1px solid var(--line);
+}
+
+.section-diarias {
+  background: #eef7f1;
+  border-color: #cfe9d8;
+}
+
+.section-semanales {
+  background: #f3eef9;
+  border-color: #ded0ee;
+}
+
+.section-reunion {
+  background: #fdf1e7;
+  border-color: #f2d9c1;
+}
+
+.section-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.section-header h2 {
+  font-size: 20px;
+  margin: 0 0 2px;
+  color: var(--primary-dark);
+}
+
+.section-subtitle {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+.section-header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.section-total {
+  font-size: 12px;
+  color: var(--ink-soft);
+  background: rgba(255, 255, 255, 0.7);
+  border-radius: 20px;
+  padding: 3px 10px;
+}
+
+.link-btn-section {
+  border: 1px solid rgba(43, 52, 38, 0.15);
+  background: rgba(255, 255, 255, 0.7);
+  border-radius: 20px;
+  padding: 6px 14px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--primary-dark);
+}
+
+.link-btn-section:hover {
+  background: #fff;
+}
+
+.task-section .board {
+  background: transparent;
+}
+
+.task-section .column {
+  background: rgba(255, 255, 255, 0.65);
+}
+
+.task-reunion {
+  font-size: 12.5px;
+  color: var(--ink-soft);
+  margin: -6px 0 8px;
+}
+
+.modal-wide {
+  max-width: 560px;
+}
+
+.review-subheading {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 18px 0 10px;
 }
 
 .status-loading, .status-error {
