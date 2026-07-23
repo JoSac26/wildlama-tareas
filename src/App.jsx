@@ -9,7 +9,13 @@ const DIA_HOY = new Date().getDay(); // 0=domingo ... 6=sábado
 
 function tareaAplicaHoy(task) {
   if (task.type === "diaria") return true;
-  if (task.type === "semanal") return (task.days_of_week || []).includes(DIA_HOY);
+  if (task.type === "semanal") {
+    const esHoySuDia = (task.days_of_week || []).includes(DIA_HOY);
+    const sigueIncompleta = task.status !== "completada";
+    // Se muestra el día que le toca, y sigue visible todos los días
+    // siguientes si no se ha completado, hasta que alguien la marque lista.
+    return esHoySuDia || sigueIncompleta;
+  }
   if (task.type === "fecha") {
     const hoy = new Date().toISOString().slice(0, 10);
     // se muestra el día indicado, y sigue visible si quedó pendiente de días anteriores
