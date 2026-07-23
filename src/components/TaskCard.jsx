@@ -37,7 +37,9 @@ export default function TaskCard({ task, team, onClick, onEdit }) {
 
         {asignado ? (
           <span className="assignee">
-            <span className="avatar">{iniciales(asignado.name)}</span>
+            <span className="avatar" style={{ background: asignado.color || "var(--primary)" }}>
+              {iniciales(asignado.name)}
+            </span>
             {asignado.name}
           </span>
         ) : (
