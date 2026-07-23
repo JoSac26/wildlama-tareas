@@ -23,6 +23,12 @@ export default function SettingsModal({ team, onClose, onChanged }) {
   }
 
   async function removeMember(id) {
+    // Antes de eliminar a la persona, sus tareas asignadas vuelven a Pendiente
+    // (para que nunca quede una tarea "en curso" sin nadie asignado).
+    await supabase
+      .from("tasks")
+      .update({ status: "pendiente", assigned_to: null, updated_at: new Date().toISOString() })
+      .eq("assigned_to", id);
     await supabase.from("team_members").delete().eq("id", id);
     onChanged();
   }
