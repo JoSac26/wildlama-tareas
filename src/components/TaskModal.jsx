@@ -15,6 +15,7 @@ export default function TaskModal({ initial, onClose, onSaved, onDelete }) {
   const [title, setTitle] = useState(initial?.title || "");
   const [type, setType] = useState(initial?.type || "diaria");
   const [specificDate, setSpecificDate] = useState(initial?.specific_date || "");
+  const [reunionNombre, setReunionNombre] = useState(initial?.reunion || "");
   const [daysOfWeek, setDaysOfWeek] = useState(initial?.days_of_week || []);
   const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState(null);
@@ -29,7 +30,11 @@ export default function TaskModal({ initial, onClose, onSaved, onDelete }) {
       return;
     }
     if (type === "fecha" && !specificDate) {
-      setErrorMsg("Elige una fecha para esta tarea.");
+      setErrorMsg("Elige un plazo para esta tarea.");
+      return;
+    }
+    if (type === "fecha" && !reunionNombre.trim()) {
+      setErrorMsg("Cuéntanos en qué reunión nació esta tarea.");
       return;
     }
     if (type === "semanal" && daysOfWeek.length === 0) {
@@ -44,6 +49,7 @@ export default function TaskModal({ initial, onClose, onSaved, onDelete }) {
       title: title.trim(),
       type,
       specific_date: type === "fecha" ? specificDate : null,
+      reunion: type === "fecha" ? reunionNombre.trim() : null,
       days_of_week: type === "semanal" ? daysOfWeek : null,
     };
 
@@ -95,7 +101,7 @@ export default function TaskModal({ initial, onClose, onSaved, onDelete }) {
               className={`type-chip ${type === "fecha" ? "selected" : ""}`}
               onClick={() => setType("fecha")}
             >
-              Fecha específica
+              Nacida en reunión
             </button>
           </div>
         </div>
@@ -124,13 +130,25 @@ export default function TaskModal({ initial, onClose, onSaved, onDelete }) {
 
         {type === "fecha" && (
           <div className="field">
-            <label>Fecha</label>
+            <label>¿En qué reunión nació esta tarea?</label>
+            <input
+              type="text"
+              value={reunionNombre}
+              onChange={(e) => setReunionNombre(e.target.value)}
+              placeholder="Ej. Reunión semanal SAC"
+            />
+          </div>
+        )}
+
+        {type === "fecha" && (
+          <div className="field">
+            <label>Plazo para completarla</label>
             <input
               type="date"
               value={specificDate}
               onChange={(e) => setSpecificDate(e.target.value)}
             />
-            <p className="hint">Tarea única, no se resetea.</p>
+            <p className="hint">Tarea única, no se resetea. Queda visible desde hoy hasta que se complete.</p>
           </div>
         )}
 
