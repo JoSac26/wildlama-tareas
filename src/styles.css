@@ -204,9 +204,9 @@ button {
   white-space: nowrap;
 }
 
-.badge-diaria { background: #dcefe1; color: #2f6b45; }
-.badge-fecha { background: #f7e2cf; color: #8a5a2b; }
-.badge-semanal { background: #e6def2; color: #5b3f80; }
+.badge-diaria { background: #e4e9df; color: var(--primary-dark); }
+.badge-fecha { background: #eadfd0; color: #7a5a34; }
+.badge-semanal { background: #dde6ef; color: #3a5a78; }
 
 .assignee {
   font-size: 12.5px;
@@ -494,8 +494,50 @@ button {
   margin: 18px 0 10px;
 }
 
-.status-loading, .status-error {
-  text-align: center;
-  padding: 60px 20px;
-  color: var(--ink-soft);
+.badge-fecha {
+  background: #f7e2cf;
+  color: #8a5a2b;
+}
+
+.badge-semanal {
+  background: #e6def2;
+  color: #5b3f80;
+}
+
+.badge-diaria {
+  background: #dcefe1;
+  color: #2f6b45;
+}
+
+.member-swatch {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 1px var(--line);
+}
+
+.color-swatches {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.color-swatch {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: transform 0.1s ease;
+}
+
+.color-swatch:hover {
+  transform: scale(1.1);
+}
+
+.color-swatch.selected {
+  border-color: var(--ink);
+  box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--ink);
 }
