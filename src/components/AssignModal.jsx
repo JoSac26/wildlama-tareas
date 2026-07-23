@@ -26,7 +26,9 @@ export default function AssignModal({ task, team, onClose, onAssign }) {
           <div className="name-list">
             {activos.map((m) => (
               <button key={m.id} className="name-option" onClick={() => onAssign(task, m.id)}>
-                <span className="avatar">{iniciales(m.name)}</span>
+                <span className="avatar" style={{ background: m.color || "var(--primary)" }}>
+                  {iniciales(m.name)}
+                </span>
                 {m.name}
               </button>
             ))}
