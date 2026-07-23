@@ -12,10 +12,10 @@ function esSemanalDeHoy(task) {
   return (task.days_of_week || []).includes(DIA_HOY);
 }
 
-function tareaReunionVisible(task) {
-  const hoy = new Date().toISOString().slice(0, 10);
-  // se muestra desde su plazo en adelante (si no tiene plazo, siempre visible)
-  return !task.specific_date || task.specific_date <= hoy;
+function tareaReunionVisible() {
+  // Siempre visible: nace en la reunión y se muestra de inmediato.
+  // El plazo es solo un dato informativo de cuándo vence, no controla si se ve o no.
+  return true;
 }
 
 export default function App() {
