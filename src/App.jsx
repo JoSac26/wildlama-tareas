@@ -101,6 +101,13 @@ export default function App() {
       .eq("id", task.id);
   }
 
+  async function handleUnassign(task) {
+    await supabase
+      .from("tasks")
+      .update({ status: "pendiente", assigned_to: null, updated_at: new Date().toISOString() })
+      .eq("id", task.id);
+  }
+
   async function handleDeleteTask(taskId) {
     await supabase.from("tasks").delete().eq("id", taskId);
   }
@@ -145,6 +152,7 @@ export default function App() {
             team={team}
             onCardClick={handleCardClick}
             onEditTask={setEditingTask}
+            onUnassign={handleUnassign}
           />
 
           <Section
@@ -155,6 +163,7 @@ export default function App() {
             team={team}
             onCardClick={handleCardClick}
             onEditTask={setEditingTask}
+            onUnassign={handleUnassign}
             headerAction={
               <button className="link-btn-section" onClick={() => setShowWeeklyReview(true)}>
                 Ver todas las semanales
@@ -170,6 +179,7 @@ export default function App() {
             team={team}
             onCardClick={handleCardClick}
             onEditTask={setEditingTask}
+            onUnassign={handleUnassign}
           />
         </>
       )}
@@ -217,6 +227,7 @@ export default function App() {
           onClose={() => setShowWeeklyReview(false)}
           onCardClick={handleCardClick}
           onEditTask={setEditingTask}
+          onUnassign={handleUnassign}
         />
       )}
     </div>
