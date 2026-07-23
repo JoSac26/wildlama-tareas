@@ -7,7 +7,7 @@ const COLUMNS = [
   { key: "completada", label: "Completada" },
 ];
 
-export default function Section({ id, title, subtitle, grouped, team, onCardClick, onEditTask, headerAction }) {
+export default function Section({ id, title, subtitle, grouped, team, onCardClick, onEditTask, onUnassign, headerAction }) {
   const total = grouped.pendiente.length + grouped.en_curso.length + grouped.completada.length;
 
   return (
@@ -45,6 +45,7 @@ export default function Section({ id, title, subtitle, grouped, team, onCardClic
                 team={team}
                 onClick={() => onCardClick(task)}
                 onEdit={() => onEditTask(task)}
+                onUnassign={() => onUnassign(task)}
               />
             ))}
           </div>
