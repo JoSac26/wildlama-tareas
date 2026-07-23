@@ -54,9 +54,11 @@ async function main() {
   }
 
   // 2) Tareas semanales: solo las que tengan hoy en su lista de días
+  //    Y que ya estén "completada" — si quedaron pendientes o en curso,
+  //    se dejan intactas para que sigan visibles hasta que alguien las termine.
   const { data: semanales, error: errSemanales } = await supabase
     .from("tasks")
-    .select("id, days_of_week")
+    .select("id, days_of_week, status")
     .eq("type", "semanal");
 
   if (errSemanales) {
@@ -65,7 +67,7 @@ async function main() {
   }
 
   const idsHoy = semanales
-    .filter((t) => (t.days_of_week || []).includes(dayOfWeek))
+    .filter((t) => (t.days_of_week || []).includes(dayOfWeek) && t.status === "completada")
     .map((t) => t.id);
 
   if (idsHoy.length > 0) {
