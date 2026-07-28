@@ -12,6 +12,13 @@ function esSemanalDeHoy(task) {
   return (task.days_of_week || []).includes(DIA_HOY);
 }
 
+function semanalVisibleEnTablero(task) {
+  // Se muestra el día que le toca, y sigue apareciendo sola en el tablero
+  // principal los días siguientes si no se completó — hasta que alguien
+  // la termine, ahí recién "duerme" hasta su próximo día programado.
+  return esSemanalDeHoy(task) || task.status !== "completada";
+}
+
 function tareaReunionVisible() {
   // Siempre visible: nace en la reunión y se muestra de inmediato.
   // El plazo es solo un dato informativo de cuándo vence, no controla si se ve o no.
@@ -62,7 +69,7 @@ export default function App() {
 
   const diarias = useMemo(() => tasks.filter((t) => t.type === "diaria"), [tasks]);
   const semanalesHoy = useMemo(
-    () => tasks.filter((t) => t.type === "semanal" && esSemanalDeHoy(t)),
+    () => tasks.filter((t) => t.type === "semanal" && semanalVisibleEnTablero(t)),
     [tasks]
   );
   const todasLasSemanales = useMemo(() => tasks.filter((t) => t.type === "semanal"), [tasks]);
@@ -158,7 +165,7 @@ export default function App() {
           <Section
             id="semanales"
             title="🗓️ Semanales"
-            subtitle="Solo se muestran el día que les toca"
+            subtitle="Aparecen su día, y siguen pendientes hasta completarse"
             grouped={agrupar(semanalesHoy)}
             team={team}
             onCardClick={handleCardClick}
