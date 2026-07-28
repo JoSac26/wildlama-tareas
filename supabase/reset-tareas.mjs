@@ -1,8 +1,10 @@
 // Wild Lama · Canasta de Tareas
-// Resetea las tareas "diarias" y las "semanales" que correspondan a medianoche
-// hora de Chile. Se ejecuta cada hora vía GitHub Actions, pero solo actúa
-// cuando en Chile es medianoche (esto evita problemas con el cambio de
-// horario de verano/invierno).
+// Resetea las tareas "diarias" y las "semanales" que correspondan, una vez
+// por día (hora de Chile). Se ejecuta cada hora vía GitHub Actions, pero en
+// vez de depender de "cachar" la hora exacta de medianoche (poco confiable,
+// porque GitHub a veces atrasa o se salta ejecuciones programadas), el
+// script recuerda qué día reseteó por última vez y actúa en cuanto detecta
+// que cambió el día calendario en Chile — sin importar a qué hora corra.
 
 import { createClient } from "@supabase/supabase-js";
 
@@ -16,29 +18,42 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-function horaYDiaEnChile() {
-  const formatter = new Intl.DateTimeFormat("en-US", {
+function fechaYDiaEnChile() {
+  const formatter = new Intl.DateTimeFormat("en-CA", {
     timeZone: "America/Santiago",
-    hour: "numeric",
-    hour12: false,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
     weekday: "short",
   });
   const parts = formatter.formatToParts(new Date());
-  const hour = Number(parts.find((p) => p.type === "hour").value);
-  const weekdayStr = parts.find((p) => p.type === "weekday").value; // "Sun","Mon",...
+  const get = (type) => parts.find((p) => p.type === type).value;
+  const fecha = `${get("year")}-${get("month")}-${get("day")}`; // YYYY-MM-DD
   const map = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
-  return { hour, dayOfWeek: map[weekdayStr] };
+  const dayOfWeek = map[get("weekday")];
+  return { fecha, dayOfWeek };
 }
 
 async function main() {
-  const { hour, dayOfWeek } = horaYDiaEnChile();
+  const { fecha, dayOfWeek } = fechaYDiaEnChile();
 
-  if (hour !== 0) {
-    console.log(`Son las ${hour}:00 en Chile, no es medianoche. No se hace nada.`);
+  const { data: estado, error: errEstado } = await supabase
+    .from("app_state")
+    .select("last_reset_date")
+    .eq("id", 1)
+    .single();
+
+  if (errEstado) {
+    console.error("Error leyendo app_state:", errEstado.message);
+    process.exit(1);
+  }
+
+  if (estado.last_reset_date === fecha) {
+    console.log(`Ya se reseteó hoy (${fecha}, hora Chile). No se hace nada.`);
     return;
   }
 
-  console.log(`Medianoche en Chile (día de la semana ${dayOfWeek}). Reseteando tareas…`);
+  console.log(`Nuevo día detectado en Chile: ${fecha} (día de la semana ${dayOfWeek}). Reseteando…`);
 
   // 1) Tareas diarias: siempre se resetean
   const { data: diarias, error: errDiarias } = await supabase
@@ -63,27 +78,39 @@ async function main() {
 
   if (errSemanales) {
     console.error("Error leyendo tareas semanales:", errSemanales.message);
-    return;
-  }
-
-  const idsHoy = semanales
-    .filter((t) => (t.days_of_week || []).includes(dayOfWeek) && t.status === "completada")
-    .map((t) => t.id);
-
-  if (idsHoy.length > 0) {
-    const { error: errUpdate } = await supabase
-      .from("tasks")
-      .update({ status: "pendiente", assigned_to: null, updated_at: new Date().toISOString() })
-      .in("id", idsHoy);
-
-    if (errUpdate) {
-      console.error("Error reseteando tareas semanales:", errUpdate.message);
-    } else {
-      console.log(`Tareas semanales reseteadas: ${idsHoy.length}`);
-    }
   } else {
-    console.log("Ninguna tarea semanal corresponde a hoy.");
+    const idsHoy = semanales
+      .filter((t) => (t.days_of_week || []).includes(dayOfWeek) && t.status === "completada")
+      .map((t) => t.id);
+
+    if (idsHoy.length > 0) {
+      const { error: errUpdate } = await supabase
+        .from("tasks")
+        .update({ status: "pendiente", assigned_to: null, updated_at: new Date().toISOString() })
+        .in("id", idsHoy);
+
+      if (errUpdate) {
+        console.error("Error reseteando tareas semanales:", errUpdate.message);
+      } else {
+        console.log(`Tareas semanales reseteadas: ${idsHoy.length}`);
+      }
+    } else {
+      console.log("Ninguna tarea semanal corresponde a hoy.");
+    }
   }
+
+  // 3) Guardamos la fecha para no volver a resetear hoy de nuevo
+  const { error: errGuardar } = await supabase
+    .from("app_state")
+    .update({ last_reset_date: fecha })
+    .eq("id", 1);
+
+  if (errGuardar) {
+    console.error("Error guardando la fecha de reseteo:", errGuardar.message);
+    process.exit(1);
+  }
+
+  console.log(`Listo. Próximo reseteo cuando cambie el día (después de ${fecha}).`);
 }
 
 main().catch((err) => {
