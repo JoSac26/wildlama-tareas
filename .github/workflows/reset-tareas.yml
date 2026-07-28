@@ -2,9 +2,11 @@ name: Reset diario de tareas
 
 on:
   schedule:
-    # Corre cada hora; el script internamente solo actúa cuando es
-    # medianoche en Chile (esto evita problemas con el horario de verano).
-    - cron: "0 * * * *"
+    # Corre cada 15 minutos; el script internamente solo actúa la primera
+    # vez que detecta un día nuevo (hora Chile), sin importar a qué hora
+    # corra exactamente. Esto compensa que GitHub a veces atrasa o se
+    # salta ejecuciones programadas.
+    - cron: "*/15 * * * *"
   workflow_dispatch: {}
 
 jobs:
@@ -17,7 +19,7 @@ jobs:
       - name: Configurar Node
         uses: actions/setup-node@v4
         with:
-         node-version: "22"
+          node-version: "22"
 
       - name: Instalar dependencia de Supabase
         run: npm install @supabase/supabase-js
