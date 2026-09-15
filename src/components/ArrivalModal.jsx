@@ -9,7 +9,7 @@ function iniciales(nombre) {
     .toUpperCase();
 }
 
-export default function ArrivalModal({ team, arrivals, onClose, onArrive, onDepart, onTogglePause }) {
+export default function ArrivalModal({ team, arrivals, onClose, onArrive, onDepart, onTogglePause, onReturn }) {
   const activos = team.filter((m) => m.active);
   const llegadaPorMiembro = new Map(arrivals.map((a) => [a.member_id, a]));
 
@@ -75,7 +75,14 @@ export default function ArrivalModal({ team, arrivals, onClose, onArrive, onDepa
                     </>
                   )}
 
-                  {seFue && <span className="hint" style={{ margin: 0 }}>ya se fue hoy</span>}
+                  {seFue && (
+                    <>
+                      <span className="hint" style={{ margin: 0 }}>ya se fue hoy</span>
+                      <button className="btn btn-ghost btn-small" onClick={() => onReturn(m.id)}>
+                        ↩️ Volver a entrar
+                      </button>
+                    </>
+                  )}
                 </div>
               );
             })}
