@@ -5,6 +5,7 @@ import WeeklyReviewModal from "./components/WeeklyReviewModal.jsx";
 import TaskModal from "./components/TaskModal.jsx";
 import AssignModal from "./components/AssignModal.jsx";
 import SettingsModal from "./components/SettingsModal.jsx";
+import ArrivalModal from "./components/ArrivalModal.jsx";
 
 const DIA_HOY = new Date().getDay(); // 0=domingo ... 6=sábado
 
@@ -28,6 +29,7 @@ function tareaReunionVisible() {
 export default function App() {
   const [tasks, setTasks] = useState([]);
   const [team, setTeam] = useState([]);
+  const [arrivals, setArrivals] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -36,19 +38,27 @@ export default function App() {
   const [assigningTask, setAssigningTask] = useState(null);
   const [showSettings, setShowSettings] = useState(false);
   const [showWeeklyReview, setShowWeeklyReview] = useState(false);
+  const [showArrival, setShowArrival] = useState(false);
 
   const loadAll = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const [tasksRes, teamRes] = await Promise.all([
+    const hoy = new Date().toISOString().slice(0, 10);
+    const [tasksRes, teamRes, arrivalsRes] = await Promise.all([
       supabase.from("tasks").select("*").order("created_at", { ascending: true }),
       supabase.from("team_members").select("*").order("name", { ascending: true }),
+      supabase
+        .from("arrivals")
+        .select("*")
+        .eq("arrival_date", hoy)
+        .order("arrived_at", { ascending: true }),
     ]);
-    if (tasksRes.error || teamRes.error) {
-      setError((tasksRes.error || teamRes.error).message);
+    if (tasksRes.error || teamRes.error || arrivalsRes.error) {
+      setError((tasksRes.error || teamRes.error || arrivalsRes.error).message);
     } else {
       setTasks(tasksRes.data);
       setTeam(teamRes.data);
+      setArrivals(arrivalsRes.data);
     }
     setLoading(false);
   }, []);
@@ -60,6 +70,7 @@ export default function App() {
       .channel("realtime-tareas")
       .on("postgres_changes", { event: "*", schema: "public", table: "tasks" }, loadAll)
       .on("postgres_changes", { event: "*", schema: "public", table: "team_members" }, loadAll)
+      .on("postgres_changes", { event: "*", schema: "public", table: "arrivals" }, loadAll)
       .subscribe();
 
     return () => {
@@ -77,6 +88,75 @@ export default function App() {
     () => tasks.filter((t) => t.type === "fecha" && tareaReunionVisible(t)),
     [tasks]
   );
+
+  const presentes = useMemo(
+    () => arrivals.filter((a) => !a.left_at && !a.paused_at),
+    [arrivals]
+  );
+
+  // Reparto automático de tareas de apertura: cada vez que cambian las
+  // tareas o quién está presente (llegó y no se ha ido), se recalcula
+  // quién debería tener cada tarea (round-robin entre los presentes) y se
+  // corrige sola cualquier diferencia. Así, cuando alguien marca su salida,
+  // sus tareas de canal se reasignan solas a quien siga presente — nunca
+  // quedan abandonadas.
+  useEffect(() => {
+    if (presentes.length === 0) return;
+
+    const aperturaPendientes = tasks
+      .filter((t) => t.type === "diaria" && t.es_apertura && t.status !== "completada")
+      .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+
+    if (aperturaPendientes.length === 0) return;
+
+    const porCorregir = aperturaPendientes
+      .map((task, i) => {
+        const memberId = presentes[i % presentes.length].member_id;
+        const yaEsta = task.assigned_to === memberId && task.status === "en_curso";
+        return yaEsta ? null : { id: task.id, memberId };
+      })
+      .filter(Boolean);
+
+    if (porCorregir.length === 0) return;
+
+    porCorregir.forEach(({ id, memberId }) => {
+      supabase
+        .from("tasks")
+        .update({ status: "en_curso", assigned_to: memberId, updated_at: new Date().toISOString() })
+        .eq("id", id)
+        .then(() => {});
+    });
+  }, [tasks, presentes]);
+
+  async function handleMarkArrival(memberId) {
+    const hoy = new Date().toISOString().slice(0, 10);
+    await supabase
+      .from("arrivals")
+      .upsert(
+        { member_id: memberId, arrival_date: hoy, arrived_at: new Date().toISOString() },
+        { onConflict: "member_id,arrival_date", ignoreDuplicates: true }
+      );
+    setShowArrival(false);
+  }
+
+  async function handleMarkDeparture(memberId) {
+    const hoy = new Date().toISOString().slice(0, 10);
+    await supabase
+      .from("arrivals")
+      .update({ left_at: new Date().toISOString() })
+      .eq("member_id", memberId)
+      .eq("arrival_date", hoy);
+    setShowArrival(false);
+  }
+
+  async function handleTogglePause(memberId, pausar) {
+    const hoy = new Date().toISOString().slice(0, 10);
+    await supabase
+      .from("arrivals")
+      .update({ paused_at: pausar ? new Date().toISOString() : null })
+      .eq("member_id", memberId)
+      .eq("arrival_date", hoy);
+  }
 
   function agrupar(lista) {
     return {
@@ -135,8 +215,30 @@ export default function App() {
         <div>
           <h1>🧺 Canasta de Tareas</h1>
           <p>Equipo Customer Experience · Wild Lama</p>
+          {arrivals.length > 0 && (
+            <p className="arrivals-today">
+              📍{" "}
+              {arrivals
+                .map((a) => {
+                  const m = team.find((tm) => tm.id === a.member_id);
+                  if (!m) return null;
+                  const hora = new Date(a.arrived_at).toLocaleTimeString("es-CL", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  });
+                  if (a.left_at) return `${m.name} (se fue)`;
+                  if (a.paused_at) return `${m.name} (pausado)`;
+                  return `${m.name} (${hora})`;
+                })
+                .filter(Boolean)
+                .join(" · ")}
+            </p>
+          )}
         </div>
         <div className="header-actions">
+          <button className="btn btn-ghost" onClick={() => setShowArrival(true)}>
+            📍 Llegada / salida
+          </button>
           <button className="btn btn-ghost" onClick={() => setShowSettings(true)}>
             Equipo y tareas
           </button>
@@ -224,7 +326,12 @@ export default function App() {
       )}
 
       {showSettings && (
-        <SettingsModal team={team} onClose={() => setShowSettings(false)} onChanged={loadAll} />
+        <SettingsModal
+          team={team}
+          tasks={tasks}
+          onClose={() => setShowSettings(false)}
+          onChanged={loadAll}
+        />
       )}
 
       {showWeeklyReview && (
@@ -235,6 +342,17 @@ export default function App() {
           onCardClick={handleCardClick}
           onEditTask={setEditingTask}
           onUnassign={handleUnassign}
+        />
+      )}
+
+      {showArrival && (
+        <ArrivalModal
+          team={team}
+          arrivals={arrivals}
+          onClose={() => setShowArrival(false)}
+          onArrive={handleMarkArrival}
+          onDepart={handleMarkDeparture}
+          onTogglePause={handleTogglePause}
         />
       )}
     </div>
