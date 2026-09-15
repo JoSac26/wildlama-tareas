@@ -103,11 +103,28 @@ export default function App() {
   //
   // Además, no se reparten todas las tareas de apertura de una — se van
   // sumando tandas según cuánta gente hay: con 1 persona presente, solo se
-  // reparten las de prioridad Alta (para no sobrecargarla). Con 2 personas
-  // presentes, se suman las de prioridad Media. Con 3 o más, se suman
-  // también las de prioridad Baja.
+  // reparten las de prioridad Alta. Con 2 personas, se suman las de
+  // prioridad Media. Con 3 o más, se suman también las de prioridad Baja.
+  //
+  // Y si no queda nadie presente, cualquier tarea de apertura que haya
+  // quedado "en curso" (con alguien que ya se fue) vuelve sola a pendiente,
+  // sin dueño — no se queda pegada a alguien que ya no está.
   useEffect(() => {
-    if (presentes.length === 0) return;
+    const aperturaTasks = tasks.filter((t) => t.type === "diaria" && t.es_apertura);
+
+    if (presentes.length === 0) {
+      const porLiberar = aperturaTasks.filter(
+        (t) => t.status === "en_curso" && t.assigned_to !== null
+      );
+      porLiberar.forEach((t) => {
+        supabase
+          .from("tasks")
+          .update({ status: "pendiente", assigned_to: null, updated_at: new Date().toISOString() })
+          .eq("id", t.id)
+          .then(() => {});
+      });
+      return;
+    }
 
     const prioridadesActivas =
       presentes.length >= 3
@@ -116,14 +133,8 @@ export default function App() {
         ? ["alta", "media"]
         : ["alta"];
 
-    const aperturaPendientes = tasks
-      .filter(
-        (t) =>
-          t.type === "diaria" &&
-          t.es_apertura &&
-          t.status !== "completada" &&
-          prioridadesActivas.includes(t.prioridad)
-      )
+    const aperturaPendientes = aperturaTasks
+      .filter((t) => t.status !== "completada" && prioridadesActivas.includes(t.prioridad))
       .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
 
     if (aperturaPendientes.length === 0) return;
