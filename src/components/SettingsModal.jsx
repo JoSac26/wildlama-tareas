@@ -7,10 +7,31 @@ const PALETA = [
   "#D81B60", "#6D4C41",
 ];
 
-export default function SettingsModal({ team, onClose, onChanged }) {
+const PRIORIDADES = [
+  { value: "alta", label: "🔴 Alta" },
+  { value: "media", label: "🟡 Media" },
+  { value: "baja", label: "🟢 Baja" },
+];
+
+export default function SettingsModal({ team, tasks, onClose, onChanged }) {
   const [newName, setNewName] = useState("");
   const [newColor, setNewColor] = useState(PALETA[0]);
   const [saving, setSaving] = useState(false);
+
+  const canalRotativo = (tasks || []).filter((t) => t.type === "diaria" && t.es_apertura);
+
+  async function cambiarPrioridad(taskId, prioridad) {
+    await supabase.from("tasks").update({ prioridad }).eq("id", taskId);
+    onChanged();
+  }
+
+  async function quitarDeRotacion(taskId) {
+    await supabase
+      .from("tasks")
+      .update({ es_apertura: false, prioridad: null, hora_inicio: null, hora_fin: null })
+      .eq("id", taskId);
+    onChanged();
+  }
 
   async function addMember() {
     if (!newName.trim()) return;
@@ -85,6 +106,38 @@ export default function SettingsModal({ team, onClose, onChanged }) {
               />
             ))}
           </div>
+        </div>
+
+        <div className="field" style={{ marginTop: 24 }}>
+          <label>🔄 Canal rotativo (prioridad)</label>
+          <p className="hint" style={{ marginTop: -4 }}>
+            Estas tareas se reparten solas entre quienes están presentes. Ajusta su prioridad o
+            sácalas de la rotación aquí, sin entrar a editarlas una por una.
+          </p>
+          {canalRotativo.length === 0 && (
+            <p className="hint">
+              Ninguna todavía — marca una tarea diaria como "principal de apertura" al crearla.
+            </p>
+          )}
+          {canalRotativo.map((t) => (
+            <div className="priority-row" key={t.id}>
+              <span className="priority-row-title">{t.title}</span>
+              <div className="type-options" style={{ marginTop: 6 }}>
+                {PRIORIDADES.map((p) => (
+                  <button
+                    key={p.value}
+                    className={`type-chip ${t.prioridad === p.value ? "selected" : ""}`}
+                    onClick={() => cambiarPrioridad(t.id, p.value)}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+                <button className="link-btn" onClick={() => quitarDeRotacion(t.id)}>
+                  quitar de rotación
+                </button>
+              </div>
+            </div>
+          ))}
         </div>
 
         <div className="modal-actions">
