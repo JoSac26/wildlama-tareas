@@ -204,9 +204,9 @@ button {
   white-space: nowrap;
 }
 
-.badge-diaria { background: #e4e9df; color: var(--primary-dark); }
-.badge-fecha { background: #eadfd0; color: #7a5a34; }
-.badge-semanal { background: #dde6ef; color: #3a5a78; }
+.badge-diaria { background: #dcefe1; color: #2f6b45; }
+.badge-fecha { background: #f7e2cf; color: #8a5a2b; }
+.badge-semanal { background: #e6def2; color: #5b3f80; }
 
 .assignee {
   font-size: 12.5px;
@@ -494,21 +494,6 @@ button {
   margin: 18px 0 10px;
 }
 
-.badge-fecha {
-  background: #f7e2cf;
-  color: #8a5a2b;
-}
-
-.badge-semanal {
-  background: #e6def2;
-  color: #5b3f80;
-}
-
-.badge-diaria {
-  background: #dcefe1;
-  color: #2f6b45;
-}
-
 .member-swatch {
   width: 16px;
   height: 16px;
@@ -540,4 +525,62 @@ button {
 .color-swatch.selected {
   border-color: var(--ink);
   box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--ink);
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.checkbox-label input[type="checkbox"] {
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+.arrivals-today {
+  margin: 4px 0 0;
+  font-size: 12.5px;
+  color: var(--ink-soft);
+}
+
+.priority-row {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  background: #fff;
+}
+
+.priority-row-title {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.arrival-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  background: #fff;
+  flex-wrap: wrap;
+}
+
+.arrival-row-name {
+  font-size: 14px;
+  font-weight: 600;
+  flex: 1;
+  min-width: 80px;
+}
+
+.btn-small {
+  padding: 6px 10px;
+  font-size: 12.5px;
 }
