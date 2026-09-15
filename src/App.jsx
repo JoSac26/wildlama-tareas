@@ -149,6 +149,15 @@ export default function App() {
     setShowArrival(false);
   }
 
+  async function handleReturnToWork(memberId) {
+    const hoy = new Date().toISOString().slice(0, 10);
+    await supabase
+      .from("arrivals")
+      .update({ left_at: null, paused_at: null })
+      .eq("member_id", memberId)
+      .eq("arrival_date", hoy);
+  }
+
   async function handleTogglePause(memberId, pausar) {
     const hoy = new Date().toISOString().slice(0, 10);
     await supabase
@@ -353,6 +362,7 @@ export default function App() {
           onArrive={handleMarkArrival}
           onDepart={handleMarkDeparture}
           onTogglePause={handleTogglePause}
+          onReturn={handleReturnToWork}
         />
       )}
     </div>
