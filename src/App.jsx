@@ -100,11 +100,30 @@ export default function App() {
   // corrige sola cualquier diferencia. Así, cuando alguien marca su salida,
   // sus tareas de canal se reasignan solas a quien siga presente — nunca
   // quedan abandonadas.
+  //
+  // Además, no se reparten todas las tareas de apertura de una — se van
+  // sumando tandas según cuánta gente hay: con 1 persona presente, solo se
+  // reparten las de prioridad Alta (para no sobrecargarla). Con 2 personas
+  // presentes, se suman las de prioridad Media. Con 3 o más, se suman
+  // también las de prioridad Baja.
   useEffect(() => {
     if (presentes.length === 0) return;
 
+    const prioridadesActivas =
+      presentes.length >= 3
+        ? ["alta", "media", "baja"]
+        : presentes.length === 2
+        ? ["alta", "media"]
+        : ["alta"];
+
     const aperturaPendientes = tasks
-      .filter((t) => t.type === "diaria" && t.es_apertura && t.status !== "completada")
+      .filter(
+        (t) =>
+          t.type === "diaria" &&
+          t.es_apertura &&
+          t.status !== "completada" &&
+          prioridadesActivas.includes(t.prioridad)
+      )
       .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
 
     if (aperturaPendientes.length === 0) return;
