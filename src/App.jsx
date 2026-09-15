@@ -133,9 +133,27 @@ export default function App() {
         ? ["alta", "media"]
         : ["alta"];
 
+    // Las que sí corresponden repartir con la gente presente ahora mismo.
     const aperturaPendientes = aperturaTasks
       .filter((t) => t.status !== "completada" && prioridadesActivas.includes(t.prioridad))
       .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+
+    // Las que quedaron asignadas de antes (con más gente presente) pero ya
+    // no les toca repartirse con la gente de ahora — se sueltan, vuelven a
+    // pendiente sin dueño, hasta que llegue más gente.
+    const yaNoCorresponden = aperturaTasks.filter(
+      (t) =>
+        t.status === "en_curso" &&
+        t.assigned_to !== null &&
+        !prioridadesActivas.includes(t.prioridad)
+    );
+    yaNoCorresponden.forEach((t) => {
+      supabase
+        .from("tasks")
+        .update({ status: "pendiente", assigned_to: null, updated_at: new Date().toISOString() })
+        .eq("id", t.id)
+        .then(() => {});
+    });
 
     if (aperturaPendientes.length === 0) return;
 
