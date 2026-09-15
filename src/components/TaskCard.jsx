@@ -8,6 +8,8 @@ const TYPE_LABEL = {
 
 const DIAS_CORTOS = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
 
+const PRIORIDAD_LABEL = { alta: "🔴 Alta", media: "🟡 Media", baja: "🟢 Baja" };
+
 function iniciales(nombre) {
   return nombre
     .split(" ")
@@ -43,14 +45,22 @@ export default function TaskCard({ task, team, onClick, onEdit, onUnassign }) {
       }
     : undefined;
 
+  const puedeClicSolo = !(task.es_apertura && task.status === "pendiente");
+
   return (
-    <div className="task-card" style={cardStyle} onClick={onClick}>
+    <div className="task-card" style={cardStyle} onClick={puedeClicSolo ? onClick : undefined}>
       <p className="task-title" style={textColor ? { color: textColor } : undefined}>
         {task.title}
       </p>
       {task.type === "fecha" && task.reunion && (
         <p className="task-reunion" style={textColor ? { color: textColor, opacity: 0.85 } : undefined}>
           🤝 {task.reunion}
+        </p>
+      )}
+      {task.es_apertura && (
+        <p className="task-reunion" style={textColor ? { color: textColor, opacity: 0.85 } : undefined}>
+          {PRIORIDAD_LABEL[task.prioridad] || ""} · se reparte sola
+          {task.hora_inicio ? ` · ${task.hora_inicio.slice(0, 5)}–${task.hora_fin?.slice(0, 5) || ""}` : ""}
         </p>
       )}
       <div className="task-meta">
@@ -75,7 +85,7 @@ export default function TaskCard({ task, team, onClick, onEdit, onUnassign }) {
               {iniciales(asignado.name)}
             </span>
             {asignado.name}
-            {task.status !== "completada" && (
+            {task.status !== "completada" && !task.es_apertura && (
               <button
                 className="unassign-x"
                 title="Soltar tarea (vuelve a pendiente)"
