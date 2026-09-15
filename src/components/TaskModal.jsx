@@ -17,6 +17,10 @@ export default function TaskModal({ initial, onClose, onSaved, onDelete }) {
   const [specificDate, setSpecificDate] = useState(initial?.specific_date || "");
   const [reunionNombre, setReunionNombre] = useState(initial?.reunion || "");
   const [daysOfWeek, setDaysOfWeek] = useState(initial?.days_of_week || []);
+  const [esApertura, setEsApertura] = useState(initial?.es_apertura || false);
+  const [prioridad, setPrioridad] = useState(initial?.prioridad || "media");
+  const [horaInicio, setHoraInicio] = useState(initial?.hora_inicio?.slice(0, 5) || "");
+  const [horaFin, setHoraFin] = useState(initial?.hora_fin?.slice(0, 5) || "");
   const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState(null);
 
@@ -51,6 +55,10 @@ export default function TaskModal({ initial, onClose, onSaved, onDelete }) {
       specific_date: type === "fecha" ? specificDate : null,
       reunion: type === "fecha" ? reunionNombre.trim() : null,
       days_of_week: type === "semanal" ? daysOfWeek : null,
+      es_apertura: type === "diaria" ? esApertura : false,
+      prioridad: type === "diaria" && esApertura ? prioridad : null,
+      hora_inicio: type === "diaria" && esApertura && horaInicio ? horaInicio : null,
+      hora_fin: type === "diaria" && esApertura && horaFin ? horaFin : null,
     };
 
     const result = initial
@@ -108,6 +116,57 @@ export default function TaskModal({ initial, onClose, onSaved, onDelete }) {
 
         {type === "diaria" && (
           <p className="hint">Se resetea sola todos los días a medianoche.</p>
+        )}
+
+        {type === "diaria" && (
+          <div className="field">
+            <label className="checkbox-label">
+              <input
+                type="checkbox"
+                checked={esApertura}
+                onChange={(e) => setEsApertura(e.target.checked)}
+              />
+              Tarea principal de apertura (se reparte sola entre quienes marquen su llegada)
+            </label>
+          </div>
+        )}
+
+        {type === "diaria" && esApertura && (
+          <div className="field">
+            <label>Prioridad</label>
+            <div className="type-options">
+              <button
+                className={`type-chip ${prioridad === "alta" ? "selected" : ""}`}
+                onClick={() => setPrioridad("alta")}
+              >
+                Alta
+              </button>
+              <button
+                className={`type-chip ${prioridad === "media" ? "selected" : ""}`}
+                onClick={() => setPrioridad("media")}
+              >
+                Media
+              </button>
+              <button
+                className={`type-chip ${prioridad === "baja" ? "selected" : ""}`}
+                onClick={() => setPrioridad("baja")}
+              >
+                Baja
+              </button>
+            </div>
+          </div>
+        )}
+
+        {type === "diaria" && esApertura && (
+          <div className="field">
+            <label>Rango horario (opcional)</label>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <input type="time" value={horaInicio} onChange={(e) => setHoraInicio(e.target.value)} />
+              <span className="hint" style={{ margin: 0 }}>a</span>
+              <input type="time" value={horaFin} onChange={(e) => setHoraFin(e.target.value)} />
+            </div>
+            <p className="hint">Solo informativo, ayuda a saber cuándo corresponde hacerla.</p>
+          </div>
         )}
 
         {type === "semanal" && (
