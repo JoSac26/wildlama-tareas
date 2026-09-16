@@ -26,6 +26,18 @@ function tareaReunionVisible() {
   return true;
 }
 
+function dentroDeHorario(task) {
+  // Si no tiene rango horario definido, siempre está "dentro" (elegible).
+  if (!task.hora_inicio || !task.hora_fin) return true;
+  const ahora = new Date();
+  const minutosAhora = ahora.getHours() * 60 + ahora.getMinutes();
+  const [hIni, mIni] = task.hora_inicio.split(":").map(Number);
+  const [hFin, mFin] = task.hora_fin.split(":").map(Number);
+  const minutosIni = hIni * 60 + mIni;
+  const minutosFin = hFin * 60 + mFin;
+  return minutosAhora >= minutosIni && minutosAhora <= minutosFin;
+}
+
 export default function App() {
   const [tasks, setTasks] = useState([]);
   const [team, setTeam] = useState([]);
@@ -39,6 +51,7 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [showWeeklyReview, setShowWeeklyReview] = useState(false);
   const [showArrival, setShowArrival] = useState(false);
+  const [tick, setTick] = useState(0);
 
   const loadAll = useCallback(async () => {
     setLoading(true);
@@ -73,8 +86,11 @@ export default function App() {
       .on("postgres_changes", { event: "*", schema: "public", table: "arrivals" }, loadAll)
       .subscribe();
 
+    const intervalo = setInterval(() => setTick((t) => t + 1), 60 * 1000);
+
     return () => {
       supabase.removeChannel(channel);
+      clearInterval(intervalo);
     };
   }, [loadAll]);
 
@@ -133,19 +149,26 @@ export default function App() {
         ? ["alta", "media"]
         : ["alta"];
 
-    // Las que sí corresponden repartir con la gente presente ahora mismo.
+    // Las que sí corresponden repartir con la gente presente ahora mismo,
+    // y que además están dentro de su rango horario (si tienen uno).
     const aperturaPendientes = aperturaTasks
-      .filter((t) => t.status !== "completada" && prioridadesActivas.includes(t.prioridad))
+      .filter(
+        (t) =>
+          t.status !== "completada" &&
+          prioridadesActivas.includes(t.prioridad) &&
+          dentroDeHorario(t)
+      )
       .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
 
-    // Las que quedaron asignadas de antes (con más gente presente) pero ya
-    // no les toca repartirse con la gente de ahora — se sueltan, vuelven a
-    // pendiente sin dueño, hasta que llegue más gente.
+    // Las que quedaron asignadas de antes (con más gente presente, o dentro
+    // de su horario) pero ya no les toca — por prioridad o porque su rango
+    // horario ya pasó (o no ha llegado) — se sueltan, vuelven a pendiente
+    // sin dueño, pero SIN desaparecer del tablero.
     const yaNoCorresponden = aperturaTasks.filter(
       (t) =>
         t.status === "en_curso" &&
         t.assigned_to !== null &&
-        !prioridadesActivas.includes(t.prioridad)
+        (!prioridadesActivas.includes(t.prioridad) || !dentroDeHorario(t))
     );
     yaNoCorresponden.forEach((t) => {
       supabase
@@ -174,7 +197,7 @@ export default function App() {
         .eq("id", id)
         .then(() => {});
     });
-  }, [tasks, presentes]);
+  }, [tasks, presentes, tick]);
 
   async function handleMarkArrival(memberId) {
     const hoy = new Date().toISOString().slice(0, 10);
