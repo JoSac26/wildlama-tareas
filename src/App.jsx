@@ -27,15 +27,18 @@ function tareaReunionVisible() {
 }
 
 function dentroDeHorario(task) {
-  // Si no tiene rango horario definido, siempre está "dentro" (elegible).
-  if (!task.hora_inicio || !task.hora_fin) return true;
+  // Si no tiene hora de inicio, siempre está "dentro" (elegible).
+  // Una vez que llega su hora de inicio, queda elegible el resto del día
+  // (no se bloquea sola de nuevo al pasar la hora de fin) — así no se
+  // queda sin hacer si nadie estaba disponible justo en esa ventana.
+  // La hora de fin queda solo como referencia visual de cuándo "debería"
+  // estar lista.
+  if (!task.hora_inicio) return true;
   const ahora = new Date();
   const minutosAhora = ahora.getHours() * 60 + ahora.getMinutes();
   const [hIni, mIni] = task.hora_inicio.split(":").map(Number);
-  const [hFin, mFin] = task.hora_fin.split(":").map(Number);
   const minutosIni = hIni * 60 + mIni;
-  const minutosFin = hFin * 60 + mFin;
-  return minutosAhora >= minutosIni && minutosAhora <= minutosFin;
+  return minutosAhora >= minutosIni;
 }
 
 export default function App() {
