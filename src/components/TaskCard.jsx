@@ -30,6 +30,17 @@ function textoConContraste(hex) {
 }
 
 export default function TaskCard({ task, team, onClick, onEdit, onUnassign }) {
+  // Las tareas de reunión completadas se muestran en formato chico, para
+  // que esa columna no crezca sin control con el tiempo — clic para ver
+  // el detalle completo (editar / archivar).
+  if (task.type === "fecha" && task.status === "completada") {
+    return (
+      <div className="task-card-compact" onClick={onEdit}>
+        <span>✅ {task.title}</span>
+      </div>
+    );
+  }
+
   const asignado = team.find((m) => m.id === task.assigned_to);
   const enCursoConColor = task.status === "en_curso" && asignado?.color;
   const textColor = enCursoConColor ? textoConContraste(asignado.color) : null;
@@ -61,6 +72,7 @@ export default function TaskCard({ task, team, onClick, onEdit, onUnassign }) {
         <p className="task-reunion" style={textColor ? { color: textColor, opacity: 0.85 } : undefined}>
           {PRIORIDAD_LABEL[task.prioridad] || ""} · se reparte sola
           {task.hora_inicio ? ` · ${task.hora_inicio.slice(0, 5)}–${task.hora_fin?.slice(0, 5) || ""}` : ""}
+          {task.grupo ? ` · 🔗 ${task.grupo}` : ""}
         </p>
       )}
       <div className="task-meta">
