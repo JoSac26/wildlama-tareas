@@ -36,6 +36,40 @@ create table if not exists tasks (
 
 -- Si la tabla ya existía sin la columna "reunion", esto la agrega sin romper nada:
 alter table tasks add column if not exists reunion text;
+alter table tasks add column if not exists grupo text; -- tareas con el mismo grupo siempre se asignan juntas
+alter table tasks add column if not exists archivado boolean not null default false; -- para ocultar tareas de reunión manualmente
+
+-- Casos pendientes: burbujas flotantes para dejar casos sin resolver al
+-- irse (o en cualquier momento), con comentarios, hasta que se tickeen.
+create table if not exists casos_pendientes (
+  id uuid primary key default gen_random_uuid(),
+  numero_pedido text not null,
+  descripcion text,
+  resuelto boolean not null default false,
+  creado_por uuid references team_members(id) on delete set null,
+  created_at timestamptz not null default now(),
+  resuelto_at timestamptz
+);
+
+create table if not exists caso_comentarios (
+  id uuid primary key default gen_random_uuid(),
+  caso_id uuid not null references casos_pendientes(id) on delete cascade,
+  autor uuid references team_members(id) on delete set null,
+  texto text not null,
+  created_at timestamptz not null default now()
+);
+
+alter publication supabase_realtime add table casos_pendientes;
+alter publication supabase_realtime add table caso_comentarios;
+
+alter table casos_pendientes enable row level security;
+alter table caso_comentarios enable row level security;
+
+create policy "casos_pendientes: acceso total" on casos_pendientes
+  for all using (true) with check (true);
+
+create policy "caso_comentarios: acceso total" on caso_comentarios
+  for all using (true) with check (true);
 
 -- Habilitar tiempo real
 alter publication supabase_realtime add table tasks;
