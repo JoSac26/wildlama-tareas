@@ -11,7 +11,7 @@ const DIAS = [
   { value: 0, label: "Dom" },
 ];
 
-export default function TaskModal({ initial, onClose, onSaved, onDelete }) {
+export default function TaskModal({ initial, onClose, onSaved, onDelete, onArchive }) {
   const [title, setTitle] = useState(initial?.title || "");
   const [type, setType] = useState(initial?.type || "diaria");
   const [specificDate, setSpecificDate] = useState(initial?.specific_date || "");
@@ -21,6 +21,7 @@ export default function TaskModal({ initial, onClose, onSaved, onDelete }) {
   const [prioridad, setPrioridad] = useState(initial?.prioridad || "media");
   const [horaInicio, setHoraInicio] = useState(initial?.hora_inicio?.slice(0, 5) || "");
   const [horaFin, setHoraFin] = useState(initial?.hora_fin?.slice(0, 5) || "");
+  const [grupo, setGrupo] = useState(initial?.grupo || "");
   const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState(null);
 
@@ -59,6 +60,7 @@ export default function TaskModal({ initial, onClose, onSaved, onDelete }) {
       prioridad: type === "diaria" && esApertura ? prioridad : null,
       hora_inicio: type === "diaria" && esApertura && horaInicio ? horaInicio : null,
       hora_fin: type === "diaria" && esApertura && horaFin ? horaFin : null,
+      grupo: type === "diaria" && esApertura && grupo.trim() ? grupo.trim() : null,
     };
 
     const result = initial
@@ -169,6 +171,22 @@ export default function TaskModal({ initial, onClose, onSaved, onDelete }) {
           </div>
         )}
 
+        {type === "diaria" && esApertura && (
+          <div className="field">
+            <label>Grupo (opcional)</label>
+            <input
+              type="text"
+              value={grupo}
+              onChange={(e) => setGrupo(e.target.value)}
+              placeholder="Ej. correo-comentarios"
+            />
+            <p className="hint">
+              Ponle el mismo nombre a otra tarea de apertura para que siempre se asignen juntas a
+              la misma persona.
+            </p>
+          </div>
+        )}
+
         {type === "semanal" && (
           <div className="field">
             <label>¿Qué días?</label>
@@ -215,9 +233,16 @@ export default function TaskModal({ initial, onClose, onSaved, onDelete }) {
 
         <div className="modal-actions">
           {onDelete ? (
-            <button className="link-btn" onClick={onDelete} style={{ color: "#b23b3b" }}>
-              Eliminar tarea
-            </button>
+            <div style={{ display: "flex", gap: 14 }}>
+              <button className="link-btn" onClick={onDelete} style={{ color: "#b23b3b" }}>
+                Eliminar tarea
+              </button>
+              {type === "fecha" && onArchive && (
+                <button className="link-btn" onClick={onArchive}>
+                  🗄 Archivar
+                </button>
+              )}
+            </div>
           ) : (
             <span />
           )}
