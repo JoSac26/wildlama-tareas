@@ -69,3 +69,471 @@ export default function App() {
       supabase
         .from("arrivals")
         .select("*")
+        .eq("arrival_date", hoy)
+        .order("arrived_at", { ascending: true }),
+      supabase
+        .from("casos_pendientes")
+        .select("*")
+        .eq("resuelto", false)
+        .order("created_at", { ascending: false }),
+      supabase.from("caso_comentarios").select("*").order("created_at", { ascending: true }),
+    ]);
+    if (tasksRes.error || teamRes.error || arrivalsRes.error || casosRes.error || comentariosRes.error) {
+      setError(
+        (tasksRes.error || teamRes.error || arrivalsRes.error || casosRes.error || comentariosRes.error)
+          .message
+      );
+    } else {
+      setTasks(tasksRes.data);
+      setTeam(teamRes.data);
+      setArrivals(arrivalsRes.data);
+      setCasos(casosRes.data);
+      setComentarios(comentariosRes.data);
+    }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    loadAll();
+
+    const channel = supabase
+      .channel("realtime-tareas")
+      .on("postgres_changes", { event: "*", schema: "public", table: "tasks" }, loadAll)
+      .on("postgres_changes", { event: "*", schema: "public", table: "team_members" }, loadAll)
+      .on("postgres_changes", { event: "*", schema: "public", table: "arrivals" }, loadAll)
+      .on("postgres_changes", { event: "*", schema: "public", table: "casos_pendientes" }, loadAll)
+      .on("postgres_changes", { event: "*", schema: "public", table: "caso_comentarios" }, loadAll)
+      .subscribe();
+
+    const intervalo = setInterval(() => setTick((t) => t + 1), 60 * 1000);
+
+    return () => {
+      supabase.removeChannel(channel);
+      clearInterval(intervalo);
+    };
+  }, [loadAll]);
+
+  const diarias = useMemo(() => tasks.filter((t) => t.type === "diaria"), [tasks]);
+  const semanalesHoy = useMemo(
+    () => tasks.filter((t) => t.type === "semanal" && semanalVisibleEnTablero(t)),
+    [tasks]
+  );
+  const todasLasSemanales = useMemo(() => tasks.filter((t) => t.type === "semanal"), [tasks]);
+  const reunion = useMemo(
+    () => tasks.filter((t) => t.type === "fecha" && !t.archivado && tareaReunionVisible(t)),
+    [tasks]
+  );
+
+  const presentes = useMemo(
+    () => arrivals.filter((a) => !a.left_at && !a.paused_at),
+    [arrivals]
+  );
+
+  // Reparto automático de tareas de apertura: cada vez que cambian las
+  // tareas o quién está presente (llegó y no se ha ido), se recalcula
+  // quién debería tener cada tarea (round-robin entre los presentes) y se
+  // corrige sola cualquier diferencia. Así, cuando alguien marca su salida,
+  // sus tareas de canal se reasignan solas a quien siga presente — nunca
+  // quedan abandonadas.
+  //
+  // Además, no se reparten todas las tareas de apertura de una — se van
+  // sumando tandas según cuánta gente hay: con 1 persona presente, solo se
+  // reparten las de prioridad Alta. Con 2 personas, se suman las de
+  // prioridad Media. Con 3 o más, se suman también las de prioridad Baja.
+  //
+  // Y si no queda nadie presente, cualquier tarea de apertura que haya
+  // quedado "en curso" (con alguien que ya se fue) vuelve sola a pendiente,
+  // sin dueño — no se queda pegada a alguien que ya no está.
+  useEffect(() => {
+    const aperturaTasks = tasks.filter((t) => t.type === "diaria" && t.es_apertura);
+
+    if (presentes.length === 0) {
+      const porLiberar = aperturaTasks.filter(
+        (t) => t.status === "en_curso" && t.assigned_to !== null
+      );
+      porLiberar.forEach((t) => {
+        supabase
+          .from("tasks")
+          .update({ status: "pendiente", assigned_to: null, updated_at: new Date().toISOString() })
+          .eq("id", t.id)
+          .then(() => {});
+      });
+      return;
+    }
+
+    const presentesIds = new Set(presentes.map((p) => p.member_id));
+
+    const prioridadesActivas =
+      presentes.length >= 3
+        ? ["alta", "media", "baja"]
+        : presentes.length === 2
+        ? ["alta", "media"]
+        : ["alta"];
+
+    // Las que sí corresponden repartir con la gente presente ahora mismo,
+    // y que además están dentro de su rango horario (si tienen uno).
+    const aperturaPendientes = aperturaTasks
+      .filter(
+        (t) =>
+          t.status !== "completada" &&
+          prioridadesActivas.includes(t.prioridad) &&
+          dentroDeHorario(t)
+      )
+      .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+
+    // Las que quedaron asignadas de antes pero ya no les toca — por
+    // prioridad, por horario, o porque quien las tenía ya no está presente
+    // — se sueltan, vuelven a pendiente sin dueño (sin desaparecer).
+    const yaNoCorresponden = aperturaTasks.filter(
+      (t) =>
+        t.status === "en_curso" &&
+        t.assigned_to !== null &&
+        (!prioridadesActivas.includes(t.prioridad) ||
+          !dentroDeHorario(t) ||
+          !presentesIds.has(t.assigned_to))
+    );
+    yaNoCorresponden.forEach((t) => {
+      supabase
+        .from("tasks")
+        .update({ status: "pendiente", assigned_to: null, updated_at: new Date().toISOString() })
+        .eq("id", t.id)
+        .then(() => {});
+    });
+
+    if (aperturaPendientes.length === 0) return;
+
+    // Agrupamos por "grupo" — las tareas con el mismo grupo siempre viajan
+    // juntas a la misma persona. Las que no tienen grupo son su propio
+    // grupo de una sola tarea.
+    const grupos = new Map();
+    aperturaPendientes.forEach((t) => {
+      const clave = t.grupo || `__sola_${t.id}`;
+      if (!grupos.has(clave)) grupos.set(clave, []);
+      grupos.get(clave).push(t);
+    });
+
+    // Reparto "pegajoso": si un grupo ya tiene dueño presente (alguna de
+    // sus tareas ya está en_curso con alguien que sigue presente), se
+    // completa con ese mismo dueño y no se toca a nadie más. Solo los
+    // grupos totalmente libres se reparten a quien tenga menos carga.
+    const cargaPorPersona = new Map(presentes.map((p) => [p.member_id, 0]));
+    const porCorregir = [];
+    const gruposLibres = [];
+
+    grupos.forEach((tareasGrupo) => {
+      const conDueno = tareasGrupo.find(
+        (t) => t.status === "en_curso" && t.assigned_to && presentes.some((p) => p.member_id === t.assigned_to)
+      );
+      if (conDueno) {
+        const dueno = conDueno.assigned_to;
+        cargaPorPersona.set(dueno, (cargaPorPersona.get(dueno) || 0) + tareasGrupo.length);
+        tareasGrupo.forEach((t) => {
+          const yaEsta = t.status === "en_curso" && t.assigned_to === dueno;
+          if (!yaEsta) porCorregir.push({ id: t.id, memberId: dueno });
+        });
+      } else {
+        gruposLibres.push(tareasGrupo);
+      }
+    });
+
+    gruposLibres.forEach((tareasGrupo) => {
+      let elegido = presentes[0].member_id;
+      let minCarga = Infinity;
+      presentes.forEach((p) => {
+        const carga = cargaPorPersona.get(p.member_id) || 0;
+        if (carga < minCarga) {
+          minCarga = carga;
+          elegido = p.member_id;
+        }
+      });
+      tareasGrupo.forEach((t) => porCorregir.push({ id: t.id, memberId: elegido }));
+      cargaPorPersona.set(elegido, (cargaPorPersona.get(elegido) || 0) + tareasGrupo.length);
+    });
+
+    if (porCorregir.length === 0) return;
+
+    porCorregir.forEach(({ id, memberId }) => {
+      supabase
+        .from("tasks")
+        .update({ status: "en_curso", assigned_to: memberId, updated_at: new Date().toISOString() })
+        .eq("id", id)
+        .then(() => {});
+    });
+  }, [tasks, presentes, tick]);
+
+  async function handleMarkArrival(memberId) {
+    const hoy = new Date().toISOString().slice(0, 10);
+    await supabase
+      .from("arrivals")
+      .upsert(
+        { member_id: memberId, arrival_date: hoy, arrived_at: new Date().toISOString() },
+        { onConflict: "member_id,arrival_date", ignoreDuplicates: true }
+      );
+    setShowArrival(false);
+  }
+
+  async function handleMarkDeparture(memberId) {
+    const hoy = new Date().toISOString().slice(0, 10);
+    await supabase
+      .from("arrivals")
+      .update({ left_at: new Date().toISOString() })
+      .eq("member_id", memberId)
+      .eq("arrival_date", hoy);
+    setShowArrival(false);
+  }
+
+  async function handleReturnToWork(memberId) {
+    const hoy = new Date().toISOString().slice(0, 10);
+    await supabase
+      .from("arrivals")
+      .update({ left_at: null, paused_at: null })
+      .eq("member_id", memberId)
+      .eq("arrival_date", hoy);
+  }
+
+  async function handleTogglePause(memberId, pausar) {
+    const hoy = new Date().toISOString().slice(0, 10);
+    await supabase
+      .from("arrivals")
+      .update({ paused_at: pausar ? new Date().toISOString() : null })
+      .eq("member_id", memberId)
+      .eq("arrival_date", hoy);
+  }
+
+  function agrupar(lista) {
+    return {
+      pendiente: lista.filter((t) => t.status === "pendiente"),
+      en_curso: lista.filter((t) => t.status === "en_curso"),
+      completada: lista.filter((t) => t.status === "completada"),
+    };
+  }
+
+  async function handleAssign(task, memberId) {
+    await supabase
+      .from("tasks")
+      .update({ status: "en_curso", assigned_to: memberId, updated_at: new Date().toISOString() })
+      .eq("id", task.id);
+    setAssigningTask(null);
+  }
+
+  async function handleComplete(task) {
+    await supabase
+      .from("tasks")
+      .update({ status: "completada", updated_at: new Date().toISOString() })
+      .eq("id", task.id);
+  }
+
+  async function handleReabrir(task) {
+    await supabase
+      .from("tasks")
+      .update({ status: "en_curso", updated_at: new Date().toISOString() })
+      .eq("id", task.id);
+  }
+
+  async function handleUnassign(task) {
+    await supabase
+      .from("tasks")
+      .update({ status: "pendiente", assigned_to: null, updated_at: new Date().toISOString() })
+      .eq("id", task.id);
+  }
+
+  async function handleDeleteTask(taskId) {
+    await supabase.from("tasks").delete().eq("id", taskId);
+  }
+
+  async function handleArchiveTask(taskId) {
+    await supabase.from("tasks").update({ archivado: true }).eq("id", taskId);
+  }
+
+  async function handleCreateCase(data) {
+    await supabase.from("casos_pendientes").insert(data);
+  }
+
+  async function handleAddComment(casoId, autorId, texto) {
+    await supabase.from("caso_comentarios").insert({ caso_id: casoId, autor: autorId, texto });
+  }
+
+  async function handleResolveCase(casoId) {
+    await supabase
+      .from("casos_pendientes")
+      .update({ resuelto: true, resuelto_at: new Date().toISOString() })
+      .eq("id", casoId);
+  }
+
+  function handleCardClick(task) {
+    if (task.status === "pendiente") {
+      setAssigningTask(task);
+    } else if (task.status === "en_curso") {
+      handleComplete(task);
+    } else {
+      handleReabrir(task);
+    }
+  }
+
+  return (
+    <div className="app">
+      <header className="app-header">
+        <div>
+          <h1>🧺 Canasta de Tareas</h1>
+          <p>Equipo Customer Experience · Wild Lama</p>
+          {arrivals.length > 0 && (
+            <p className="arrivals-today">
+              📍{" "}
+              {arrivals
+                .map((a) => {
+                  const m = team.find((tm) => tm.id === a.member_id);
+                  if (!m) return null;
+                  const hora = new Date(a.arrived_at).toLocaleTimeString("es-CL", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  });
+                  if (a.left_at) return `${m.name} (se fue)`;
+                  if (a.paused_at) return `${m.name} (pausado)`;
+                  return `${m.name} (${hora})`;
+                })
+                .filter(Boolean)
+                .join(" · ")}
+            </p>
+          )}
+        </div>
+        <div className="header-actions">
+          <button className="btn btn-ghost" onClick={() => setShowArrival(true)}>
+            📍 Llegada / salida
+          </button>
+          <button className="btn btn-ghost" onClick={() => setShowSettings(true)}>
+            Equipo y tareas
+          </button>
+          <button className="btn btn-primary" onClick={() => setShowNewTask(true)}>
+            + Nueva tarea
+          </button>
+        </div>
+      </header>
+
+      {loading && <div className="status-loading">Cargando tareas…</div>}
+      {error && <div className="status-error">No se pudo cargar: {error}</div>}
+
+      {!loading && !error && (
+        <>
+          <Section
+            id="diarias"
+            title="☀️ Diarias"
+            subtitle="Se resetean solas cada noche"
+            grouped={agrupar(diarias)}
+            team={team}
+            onCardClick={handleCardClick}
+            onEditTask={setEditingTask}
+            onUnassign={handleUnassign}
+          />
+
+          <Section
+            id="semanales"
+            title="🗓️ Semanales"
+            subtitle="Aparecen su día, y siguen pendientes hasta completarse"
+            grouped={agrupar(semanalesHoy)}
+            team={team}
+            onCardClick={handleCardClick}
+            onEditTask={setEditingTask}
+            onUnassign={handleUnassign}
+            headerAction={
+              <button className="link-btn-section" onClick={() => setShowWeeklyReview(true)}>
+                Ver todas las semanales
+              </button>
+            }
+          />
+
+          <Section
+            id="reunion"
+            title="🤝 Tareas nacidas en reunión"
+            subtitle="Con reunión de origen y plazo"
+            grouped={agrupar(reunion)}
+            team={team}
+            onCardClick={handleCardClick}
+            onEditTask={setEditingTask}
+            onUnassign={handleUnassign}
+          />
+        </>
+      )}
+
+      {(showNewTask || editingTask) && (
+        <TaskModal
+          initial={editingTask}
+          onClose={() => {
+            setShowNewTask(false);
+            setEditingTask(null);
+          }}
+          onSaved={() => {
+            setShowNewTask(false);
+            setEditingTask(null);
+            loadAll();
+          }}
+          onDelete={
+            editingTask
+              ? () => handleDeleteTask(editingTask.id).then(() => {
+                  setEditingTask(null);
+                  loadAll();
+                })
+              : null
+          }
+          onArchive={
+            editingTask
+              ? () => handleArchiveTask(editingTask.id).then(() => {
+                  setEditingTask(null);
+                  loadAll();
+                })
+              : null
+          }
+        />
+      )}
+
+      {assigningTask && (
+        <AssignModal
+          task={assigningTask}
+          team={team}
+          onClose={() => setAssigningTask(null)}
+          onAssign={handleAssign}
+        />
+      )}
+
+      {showSettings && (
+        <SettingsModal
+          team={team}
+          tasks={tasks}
+          onClose={() => setShowSettings(false)}
+          onChanged={loadAll}
+        />
+      )}
+
+      {showWeeklyReview && (
+        <WeeklyReviewModal
+          tasks={todasLasSemanales}
+          team={team}
+          onClose={() => setShowWeeklyReview(false)}
+          onCardClick={handleCardClick}
+          onEditTask={setEditingTask}
+          onUnassign={handleUnassign}
+        />
+      )}
+
+      {showArrival && (
+        <ArrivalModal
+          team={team}
+          arrivals={arrivals}
+          onClose={() => setShowArrival(false)}
+          onArrive={handleMarkArrival}
+          onDepart={handleMarkDeparture}
+          onTogglePause={handleTogglePause}
+          onReturn={handleReturnToWork}
+        />
+      )}
+
+      <CasesFloating
+        team={team}
+        casos={casos}
+        comentarios={comentarios}
+        onCreateCase={handleCreateCase}
+        onAddComment={handleAddComment}
+        onResolve={handleResolveCase}
+      />
+    </div>
+  );
+}
