@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState, useCallback } from "react";
+import React, { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { supabase } from "./supabaseClient.js";
 import Section from "./components/Section.jsx";
 import WeeklyReviewModal from "./components/WeeklyReviewModal.jsx";
@@ -42,6 +42,69 @@ function dentroDeHorario(task) {
   return minutosAhora >= minutosIni;
 }
 
+// Reequilibra la carga de tareas de apertura entre los presentes: mueve
+// grupos del más cargado al menos cargado hasta que la diferencia sea de
+// a lo más 1, y reparte los grupos sin dueño a quien tenga menos. Se usa
+// solo una vez, justo cuando llega alguien nuevo — el resto del tiempo el
+// reparto es "pegajoso" y no se toca.
+function rebalancearCarga(grupos, presentes) {
+  const presentesIds = presentes.map((p) => p.member_id);
+  const cargaPorPersona = new Map(presentesIds.map((id) => [id, 0]));
+  const duenoDeGrupo = new Map();
+
+  grupos.forEach((tareasGrupo, clave) => {
+    const conDueno = tareasGrupo.find(
+      (t) => t.status === "en_curso" && t.assigned_to && presentesIds.includes(t.assigned_to)
+    );
+    const dueno = conDueno ? conDueno.assigned_to : null;
+    duenoDeGrupo.set(clave, dueno);
+    if (dueno) cargaPorPersona.set(dueno, (cargaPorPersona.get(dueno) || 0) + tareasGrupo.length);
+  });
+
+  const cambios = new Map();
+  let vueltas = 0;
+  while (vueltas < 50) {
+    vueltas++;
+    const entradas = [...cargaPorPersona.entries()];
+    const masCargado = entradas.reduce((a, b) => (b[1] > a[1] ? b : a));
+    const menosCargado = entradas.reduce((a, b) => (b[1] < a[1] ? b : a));
+    if (masCargado[1] - menosCargado[1] <= 1) break;
+
+    let grupoAMover = null;
+    for (const [clave, dueno] of duenoDeGrupo.entries()) {
+      if (dueno === masCargado[0] && !cambios.has(clave)) {
+        grupoAMover = clave;
+        break;
+      }
+    }
+    if (!grupoAMover) break;
+
+    const tamano = grupos.get(grupoAMover).length;
+    cargaPorPersona.set(masCargado[0], masCargado[1] - tamano);
+    cargaPorPersona.set(menosCargado[0], menosCargado[1] + tamano);
+    duenoDeGrupo.set(grupoAMover, menosCargado[0]);
+    cambios.set(grupoAMover, menosCargado[0]);
+  }
+
+  grupos.forEach((tareasGrupo, clave) => {
+    if (duenoDeGrupo.get(clave) === null) {
+      const entradas = [...cargaPorPersona.entries()];
+      const menosCargado = entradas.reduce((a, b) => (b[1] < a[1] ? b : a));
+      cargaPorPersona.set(menosCargado[0], menosCargado[1] + tareasGrupo.length);
+      cambios.set(clave, menosCargado[0]);
+    }
+  });
+
+  const updates = [];
+  cambios.forEach((nuevoDueno, clave) => {
+    grupos.get(clave).forEach((t) => {
+      const yaEsta = t.status === "en_curso" && t.assigned_to === nuevoDueno;
+      if (!yaEsta) updates.push({ id: t.id, memberId: nuevoDueno });
+    });
+  });
+  return updates;
+}
+
 export default function App() {
   const [tasks, setTasks] = useState([]);
   const [team, setTeam] = useState([]);
@@ -58,6 +121,7 @@ export default function App() {
   const [showWeeklyReview, setShowWeeklyReview] = useState(false);
   const [showArrival, setShowArrival] = useState(false);
   const [tick, setTick] = useState(0);
+  const prevPresentesRef = useRef(null);
 
   const loadAll = useCallback(async () => {
     setLoading(true);
@@ -148,6 +212,7 @@ export default function App() {
     const aperturaTasks = tasks.filter((t) => t.type === "diaria" && t.es_apertura);
 
     if (presentes.length === 0) {
+      prevPresentesRef.current = new Set();
       const porLiberar = aperturaTasks.filter(
         (t) => t.status === "en_curso" && t.assigned_to !== null
       );
@@ -162,6 +227,15 @@ export default function App() {
     }
 
     const presentesIds = new Set(presentes.map((p) => p.member_id));
+
+    // ¿Llegó alguien nuevo respecto a la última vez que corrió esto?
+    let hayRecienLlegado = false;
+    if (prevPresentesRef.current) {
+      presentesIds.forEach((id) => {
+        if (!prevPresentesRef.current.has(id)) hayRecienLlegado = true;
+      });
+    }
+    prevPresentesRef.current = presentesIds;
 
     const prioridadesActivas =
       presentes.length >= 3
@@ -212,43 +286,51 @@ export default function App() {
       grupos.get(clave).push(t);
     });
 
-    // Reparto "pegajoso": si un grupo ya tiene dueño presente (alguna de
-    // sus tareas ya está en_curso con alguien que sigue presente), se
-    // completa con ese mismo dueño y no se toca a nadie más. Solo los
-    // grupos totalmente libres se reparten a quien tenga menos carga.
-    const cargaPorPersona = new Map(presentes.map((p) => [p.member_id, 0]));
-    const porCorregir = [];
-    const gruposLibres = [];
+    let porCorregir = [];
 
-    grupos.forEach((tareasGrupo) => {
-      const conDueno = tareasGrupo.find(
-        (t) => t.status === "en_curso" && t.assigned_to && presentes.some((p) => p.member_id === t.assigned_to)
-      );
-      if (conDueno) {
-        const dueno = conDueno.assigned_to;
-        cargaPorPersona.set(dueno, (cargaPorPersona.get(dueno) || 0) + tareasGrupo.length);
-        tareasGrupo.forEach((t) => {
-          const yaEsta = t.status === "en_curso" && t.assigned_to === dueno;
-          if (!yaEsta) porCorregir.push({ id: t.id, memberId: dueno });
-        });
-      } else {
-        gruposLibres.push(tareasGrupo);
-      }
-    });
+    if (hayRecienLlegado) {
+      // Alguien nuevo acaba de llegar: reequilibramos la carga una sola
+      // vez, moviendo grupos del más cargado al menos cargado. Después de
+      // esto, vuelve a quedar "pegajoso" hasta la próxima llegada.
+      porCorregir = rebalancearCarga(grupos, presentes);
+    } else {
+      // Reparto "pegajoso": si un grupo ya tiene dueño presente (alguna de
+      // sus tareas ya está en_curso con alguien que sigue presente), se
+      // completa con ese mismo dueño y no se toca a nadie más. Solo los
+      // grupos totalmente libres se reparten a quien tenga menos carga.
+      const cargaPorPersona = new Map(presentes.map((p) => [p.member_id, 0]));
+      const gruposLibres = [];
 
-    gruposLibres.forEach((tareasGrupo) => {
-      let elegido = presentes[0].member_id;
-      let minCarga = Infinity;
-      presentes.forEach((p) => {
-        const carga = cargaPorPersona.get(p.member_id) || 0;
-        if (carga < minCarga) {
-          minCarga = carga;
-          elegido = p.member_id;
+      grupos.forEach((tareasGrupo) => {
+        const conDueno = tareasGrupo.find(
+          (t) => t.status === "en_curso" && t.assigned_to && presentes.some((p) => p.member_id === t.assigned_to)
+        );
+        if (conDueno) {
+          const dueno = conDueno.assigned_to;
+          cargaPorPersona.set(dueno, (cargaPorPersona.get(dueno) || 0) + tareasGrupo.length);
+          tareasGrupo.forEach((t) => {
+            const yaEsta = t.status === "en_curso" && t.assigned_to === dueno;
+            if (!yaEsta) porCorregir.push({ id: t.id, memberId: dueno });
+          });
+        } else {
+          gruposLibres.push(tareasGrupo);
         }
       });
-      tareasGrupo.forEach((t) => porCorregir.push({ id: t.id, memberId: elegido }));
-      cargaPorPersona.set(elegido, (cargaPorPersona.get(elegido) || 0) + tareasGrupo.length);
-    });
+
+      gruposLibres.forEach((tareasGrupo) => {
+        let elegido = presentes[0].member_id;
+        let minCarga = Infinity;
+        presentes.forEach((p) => {
+          const carga = cargaPorPersona.get(p.member_id) || 0;
+          if (carga < minCarga) {
+            minCarga = carga;
+            elegido = p.member_id;
+          }
+        });
+        tareasGrupo.forEach((t) => porCorregir.push({ id: t.id, memberId: elegido }));
+        cargaPorPersona.set(elegido, (cargaPorPersona.get(elegido) || 0) + tareasGrupo.length);
+      });
+    }
 
     if (porCorregir.length === 0) return;
 
